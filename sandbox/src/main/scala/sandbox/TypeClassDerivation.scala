@@ -1,16 +1,28 @@
 package sandbox
 
 import scala.deriving.*
-import scala.compiletime.{summonInline, erasedValue}
+import scala.compiletime.*
 import scala.util.chaining._
 
 object TypeClassDerivation {
-  import JsonInstances.showJson
 
   // derives カッコ良すぎる...
-  case class User(id: Int, name: String, tags: List[String]) derives Show, JsonEncoder
+  case class User(id: Int, name: String, tags: List[String], status: Status) derives Show, JsonEncoder
 
-  val user = User(42, "John Doe", List("foo", "bar"))
+  enum Status derives Show, JsonEncoder:
+    case Active, Inactive
+
+  // enum の derives がうまくいかないので手動で定義
+  given Show[Status.Active.type] with
+    def show(a: Status.Active.type) = a.toString
+  given Show[Status.Inactive.type] with
+    def show(a: Status.Inactive.type) = a.toString
+  given JsonEncoder[Status.Active.type] with
+    def encode(a: Status.Active.type) = Json.JString(a.toString)
+  given JsonEncoder[Status.Inactive.type] with
+    def encode(a: Status.Inactive.type) = Json.JString(a.toString)
+
+  val user = User(42, "John Doe", List("foo", "bar"), Status.Active)
   println(user.show)
   println(user.asJson.show)
 }
@@ -32,10 +44,9 @@ object Show:
       case _: EmptyTuple => Nil
       case _: (t *: ts) => summonInline[Show[t]] :: summonAll[ts]
 
-
   def showSum[A](s: Mirror.SumOf[A], elems: => List[Show[_]]): Show[A] =
     new Show[A]:
-      def show(a: A): String = elems(s.ordinal(a)).asInstanceOf[Show[A]].show(a)
+      def show(a: A): String = elems(s.ordinal(a)).asInstanceOf[Show[Any]].show(a)
 
   def showProduct[A](p: Mirror.ProductOf[A], elems: => List[Show[_]]): Show[A] =
     new Show[A]:
@@ -72,8 +83,7 @@ enum Json:
   case JObject(value: List[(String, Json)])
 end Json
 
-object JsonInstances:
-  import Json._
+object Json:
 
   given showJson: Show[Json] with
     def show(a: Json) = a match
