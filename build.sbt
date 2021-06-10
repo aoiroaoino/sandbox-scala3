@@ -10,8 +10,7 @@ lazy val sandbox = project
   .settings(scalacOptions := {
     val dividezeroJar = (dividezero / Compile / packageBin).value.getAbsolutePath
     Seq(
-      "-Xlint",
-      s"-Xplugin:$dividezeroJar"
+//      s"-Xplugin:$dividezeroJar"
     )
   })
   .aggregate(dividezero)
