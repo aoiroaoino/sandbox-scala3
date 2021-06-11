@@ -9,22 +9,29 @@ object TypeClassDerivation {
   // derives カッコ良すぎる...
   case class User(id: Int, name: String, tags: List[String], status: Status) derives Show, JsonEncoder
 
-  enum Status derives Show, JsonEncoder:
+  enum Status: // derives Show, JsonEncoder:
     case Active, Inactive
+    case Other(s: String)
 
-  val user = User(42, "John Doe", List("foo", "bar"), Status.Active)
+  given Config = Config("override")
+
+  val user = User(42, "John Doe", List("foo", "bar"), Status.Other("other"))
+
   println(user.show)
   println(user.asJson.show)
 }
 
 // ===
 
+case class Config(v: String)
+
 trait Show[A]:
   def show(a: A): String
 
 object Show:
-  inline given derived[A](using m: Mirror.Of[A]): Show[A] =
+  inline given derived[A](using m: Mirror.Of[A], conf: Config = Config("default")): Show[A] =
     lazy val elemInstances = summonAll[m.MirroredElemTypes]
+    println(conf.v)
     inline m match
       case s: Mirror.SumOf[A] => showSum(s, elemInstances)
       case p: Mirror.ProductOf[A] => showProduct(p, elemInstances)
