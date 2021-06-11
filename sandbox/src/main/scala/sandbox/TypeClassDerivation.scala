@@ -12,16 +12,6 @@ object TypeClassDerivation {
   enum Status derives Show, JsonEncoder:
     case Active, Inactive
 
-  // enum の derives がうまくいかないので手動で定義
-  given Show[Status.Active.type] with
-    def show(a: Status.Active.type) = a.toString
-  given Show[Status.Inactive.type] with
-    def show(a: Status.Inactive.type) = a.toString
-  given JsonEncoder[Status.Active.type] with
-    def encode(a: Status.Active.type) = Json.JString(a.toString)
-  given JsonEncoder[Status.Inactive.type] with
-    def encode(a: Status.Inactive.type) = Json.JString(a.toString)
-
   val user = User(42, "John Doe", List("foo", "bar"), Status.Active)
   println(user.show)
   println(user.asJson.show)
@@ -33,7 +23,7 @@ trait Show[A]:
   def show(a: A): String
 
 object Show:
-  inline def derived[A](using m: Mirror.Of[A]): Show[A] =
+  inline given derived[A](using m: Mirror.Of[A]): Show[A] =
     lazy val elemInstances = summonAll[m.MirroredElemTypes]
     inline m match
       case s: Mirror.SumOf[A] => showSum(s, elemInstances)
@@ -51,13 +41,16 @@ object Show:
   def showProduct[A](p: Mirror.ProductOf[A], elems: => List[Show[_]]): Show[A] =
     new Show[A]:
       def show(a: A): String = {
-        val product = a.asInstanceOf[Product]
-        product.productPrefix +
-          product
-            .productIterator
-            .zip(elems.iterator)
-            .map { case (a, elem) => elem.asInstanceOf[Show[A]].show(a.asInstanceOf[A]) }
-            .mkString("(", ", ", ")")
+        if p.isInstanceOf[Mirror.Singleton] then
+          a.toString
+        else
+          val product = a.asInstanceOf[Product]
+          product.productPrefix +
+            product
+              .productIterator
+              .zip(elems.iterator)
+              .map { case (a, elem) => elem.asInstanceOf[Show[A]].show(a.asInstanceOf[A]) }
+              .mkString("(", ", ", ")")
       }
 
   given Show[String] with
@@ -113,22 +106,25 @@ trait JsonEncoder[A]:
 
 object JsonEncoder:
 
-  inline def derived[A](using m: Mirror.Of[A]): JsonEncoder[A] =
+  inline given derived[A](using m: Mirror.Of[A]): JsonEncoder[A] =
     lazy val elems = summonAll[m.MirroredElemTypes]
     inline m match
       case s: Mirror.SumOf[A] =>
         new JsonEncoder[A]:
           def encode(a: A): Json =
-            elems(s.ordinal(a)).asInstanceOf[JsonEncoder[A]].encode(a)
+            elems(s.ordinal(a)).asInstanceOf[JsonEncoder[Any]].encode(a)
       case p: Mirror.ProductOf[A] =>
         new JsonEncoder[A]:
           def encode(a: A): Json =
-            val product = a.asInstanceOf[Product]
-            product.productElementNames
-              .zip(product.productIterator)
-              .zip(elems.iterator)
-              .map { case x @ ((k, v), elem) => (k, elem.asInstanceOf[JsonEncoder[Any]].encode(v))}
-              .pipe(i => Json.JObject(i.toList))
+            if p.isInstanceOf[Mirror.Singleton] then
+              Json.JString(a.toString)
+            else
+              val product = a.asInstanceOf[Product]
+              product.productElementNames
+                .zip(product.productIterator)
+                .zip(elems.iterator)
+                .map { case x @ ((k, v), elem) => (k, elem.asInstanceOf[JsonEncoder[Any]].encode(v))}
+                .pipe(i => Json.JObject(i.toList))
 
   inline def summonAll[T <: Tuple]: List[JsonEncoder[_]] =
     inline erasedValue[T] match
